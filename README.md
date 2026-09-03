@@ -31,14 +31,27 @@ This project uses `uv` for lightning-fast Python dependency management.
 
 ## Usage
 
-### 1. Running the Data Pipeline (Dagster)
+### 1. Scraping Letterboxd Data (Optional)
+The raw data is stored in SQLite at `data/raw/letterboxd.db`. To scrape fresh or additional film details and reviews from Letterboxd:
+```bash
+# Scrape popular films (default database: data/raw/letterboxd.db)
+uv run python src/scraper/scraper.py --pages 5 --reviews 100
+
+# Or scrape a specific film by its slug
+uv run python src/scraper/scraper.py --slug oppenheimer --reviews 50
+
+# Check database statistics
+uv run python src/database/check_db.py
+```
+
+### 2. Running the Data Pipeline (Dagster)
 To run the automated data pipeline orchestrator:
 ```bash
 uv run dagster dev -m src.letterboxed_absa
 ```
 Navigate to the provided localhost URL to view the Dagster UI, materialize the assets, and monitor the pipeline execution.
 
-### 2. Exploring via Notebooks
+### 3. Exploring via Notebooks
 If you prefer to run the steps manually or explore the data interactively:
 ```bash
 uv run jupyter notebook
@@ -50,7 +63,7 @@ Execute the notebooks in sequence:
 * `06_sentiment_analysis.ipynb` (Data Processing)
 * `07_movie_sentiment_aggregation.ipynb` (Data Aggregation)
 
-### 3. Running the Dashboard (FastAPI)
+### 4. Running the Dashboard (FastAPI)
 Once the data pipeline has finished and `movie_sentiment_summary.parquet` is generated, launch the dashboard:
 ```bash
 uv run uvicorn server:app --host 0.0.0.0 --port 8000

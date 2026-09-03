@@ -7,34 +7,69 @@ Scrapes movie details from letterboxd.com/films/popular/:
 - Reviews (reviewer, text, star rating, date)
 
 Uses urllib and BeautifulSoup. No Playwright needed.
-Stores everything in SQLite via database.py.
+Stores everything in SQLite via src/database/db.py.
 """
 
+import argparse
 import json
 import logging
+import os
 import re
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from utils.database.db import init_database, save_film
+# Ensure project root and src directory are on sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SRC_DIR = Path(__file__).resolve().parent.parent
+for directory in (PROJECT_ROOT, SRC_DIR):
+    if str(directory) not in sys.path:
+        sys.path.insert(0, str(directory))
+
+try:
+    from src.database.db import init_database, save_film
+except ImportError:
+    from database.db import init_database, save_film
 
 # ── Config ──────────────────────────────────────────────────────────────
-CONFIG_PATH = Path(__file__).parent.parent.parent / "config.json"
+DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "raw" / "letterboxd.db"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
+
+DEFAULT_CONFIG = {
+    "base_url": "https://letterboxd.com",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "max_pages_to_scrape": 25,
+    "max_reviews_per_film": 100,
+    "request_delay_seconds": 1.0,
+    "database_path": str(DEFAULT_DB_PATH),
+    "log_level": "INFO",
+}
 
 
-def load_config() -> dict:
-    """Load scraper configuration from config.json."""
-    with open(CONFIG_PATH) as config_file:
-        return json.load(config_file)
+def load_config(config_path: Path | str | None = None) -> dict:
+    """Load scraper configuration from config.json if present, falling back to project defaults."""
+    config = dict(DEFAULT_CONFIG)
+
+    path_to_try = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    if path_to_try.exists():
+        try:
+            with open(path_to_try, "r", encoding="utf-8") as config_file:
+                user_config = json.load(config_file)
+                config.update(user_config)
+                logging.info("Loaded custom configuration from %s", path_to_try)
+        except Exception as e:
+            logging.warning("Failed to parse config file at %s: %s. Using defaults.", path_to_try, e)
+
+    return config
 
 
 # ── Logging ─────────────────────────────────────────────────────────────
 def setup_logging(log_level: str) -> None:
     logging.basicConfig(
-        level=getattr(logging, log_level, logging.INFO),
+        level=getattr(logging, log_level.upper(), logging.INFO),
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
@@ -47,7 +82,7 @@ def fetch_html(url: str, config: dict) -> str:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": config["user_agent"],
+            "User-Agent": config.get("user_agent", DEFAULT_CONFIG["user_agent"]),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://letterboxd.com/",
@@ -58,38 +93,39 @@ def fetch_html(url: str, config: dict) -> str:
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-User": "?1",
-            "Upgrade-Insecure-Requests": "1"
-        }
+            "Upgrade-Insecure-Requests": "1",
+        },
     )
-    # ponytail: simple urllib fetch, no third party dependencies if we can avoid it
     with urllib.request.urlopen(req, timeout=30) as response:
         return response.read().decode("utf-8")
 
 
 def scrape_popular_film_slugs(config: dict) -> list[str]:
     """Get film slugs from the popular films listing page."""
-    base_url = config["base_url"]
-    # ponytail: Use the CSI endpoint directly to bypass JS execution
+    base_url = config.get("base_url", DEFAULT_CONFIG["base_url"])
     popular_url = f"{base_url}/csi/films/films-browser-list/popular/"
-    max_pages = config["max_pages_to_scrape"]
+    max_pages = config.get("max_pages_to_scrape", DEFAULT_CONFIG["max_pages_to_scrape"])
     all_film_slugs = []
 
     for page_number in range(1, max_pages + 1):
-        # The CSI endpoint pagination looks like /page/X/?esiAllowFilters=true
         page_url = f"{popular_url}page/{page_number}/?esiAllowFilters=true" if page_number > 1 else f"{popular_url}?esiAllowFilters=true"
-        
-        logging.info("Fetching popular films page: %s", page_url)
-        html_content = fetch_html(page_url, config)
-        soup = BeautifulSoup(html_content, "html.parser")
 
-        film_posters = soup.select("div[data-item-slug]")
-        for poster in film_posters:
-            film_slug = poster.get("data-item-slug")
-            if film_slug and film_slug not in all_film_slugs:
-                all_film_slugs.append(film_slug)
+        logging.info("Fetching popular films page %d/%d: %s", page_number, max_pages, page_url)
+        try:
+            html_content = fetch_html(page_url, config)
+            soup = BeautifulSoup(html_content, "html.parser")
 
-        logging.info("Found %d films on page %d", len(film_posters), page_number)
-        time.sleep(config["request_delay_seconds"])
+            film_posters = soup.select("div[data-item-slug]")
+            for poster in film_posters:
+                film_slug = poster.get("data-item-slug")
+                if film_slug and film_slug not in all_film_slugs:
+                    all_film_slugs.append(film_slug)
+
+            logging.info("Found %d films on page %d (total unique: %d)", len(film_posters), page_number, len(all_film_slugs))
+        except Exception as e:
+            logging.error("Error fetching popular films page %d: %s", page_number, e)
+
+        time.sleep(config.get("request_delay_seconds", DEFAULT_CONFIG["request_delay_seconds"]))
 
     logging.info("Total unique film slugs collected: %d", len(all_film_slugs))
     return all_film_slugs
@@ -97,7 +133,7 @@ def scrape_popular_film_slugs(config: dict) -> list[str]:
 
 def scrape_film_detail(film_slug: str, config: dict) -> dict:
     """Scrape all details for a single film."""
-    base_url = config["base_url"]
+    base_url = config.get("base_url", DEFAULT_CONFIG["base_url"])
     film_url = f"{base_url}/film/{film_slug}/"
     logging.info("Scraping film detail: %s", film_url)
 
@@ -125,7 +161,6 @@ def scrape_film_detail(film_slug: str, config: dict) -> dict:
     # ── Synopsis ──
     synopsis_element = soup.select_one(".production-synopsis .truncate")
     if synopsis_element:
-        # Get all paragraph text
         paragraphs = synopsis_element.find_all("p")
         film_data["synopsis"] = " ".join(p.get_text(strip=True) for p in paragraphs)
     else:
@@ -172,7 +207,7 @@ def scrape_film_detail(film_slug: str, config: dict) -> dict:
     if crew_panel:
         current_role = ""
         for element in crew_panel.children:
-            if hasattr(element, 'name'):
+            if hasattr(element, "name"):
                 if element.name == "h3":
                     role_span = element.select_one("span.crewrole.-full")
                     if not role_span:
@@ -194,7 +229,7 @@ def scrape_film_detail(film_slug: str, config: dict) -> dict:
     if details_panel:
         current_detail_type = ""
         for element in details_panel.children:
-            if hasattr(element, 'name'):
+            if hasattr(element, "name"):
                 if element.name == "h3":
                     span = element.select_one("span")
                     raw_type = span.get_text(strip=True).lower() if span else ""
@@ -234,32 +269,38 @@ def scrape_film_detail(film_slug: str, config: dict) -> dict:
 
 def scrape_film_reviews(film_slug: str, config: dict) -> list[dict]:
     """Scrape reviews for a single film from the reviews page."""
-    base_url = config["base_url"]
-    
+    base_url = config.get("base_url", DEFAULT_CONFIG["base_url"])
+    max_reviews = config.get("max_reviews_per_film", DEFAULT_CONFIG["max_reviews_per_film"])
+
     review_list = []
     page = 1
-    
+
     while True:
         if page == 1:
             reviews_url = f"{base_url}/film/{film_slug}/reviews/by/activity/"
         else:
             reviews_url = f"{base_url}/film/{film_slug}/reviews/by/activity/page/{page}/"
-            
+
         logging.info("Scraping reviews page %d: %s", page, reviews_url)
-        html_content = fetch_html(reviews_url, config)
+        try:
+            html_content = fetch_html(reviews_url, config)
+        except Exception as e:
+            logging.error("Failed to fetch reviews url %s: %s", reviews_url, e)
+            break
+
         if not html_content:
             break
-            
+
         soup = BeautifulSoup(html_content, "html.parser")
         review_items = soup.select("div.listitem article")
-        
+
         if not review_items:
             break
 
         for review_item in review_items:
-            if len(review_list) >= config.get("max_reviews_per_film", 500):
+            if len(review_list) >= max_reviews:
                 break
-                
+
             review_data = {}
 
             # Reviewer name
@@ -285,12 +326,12 @@ def scrape_film_reviews(film_slug: str, config: dict) -> list[dict]:
 
             if review_data["reviewer_name"] or review_data["review_text"]:
                 review_list.append(review_data)
-        
-        if len(review_list) >= config.get("max_reviews_per_film", 500):
+
+        if len(review_list) >= max_reviews:
             break
-            
+
         page += 1
-        time.sleep(config.get("request_delay_seconds", 1))
+        time.sleep(config.get("request_delay_seconds", DEFAULT_CONFIG["request_delay_seconds"]))
 
     logging.info("Found %d reviews for %s", len(review_list), film_slug)
     return review_list
@@ -299,43 +340,61 @@ def scrape_film_reviews(film_slug: str, config: dict) -> list[dict]:
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
-    config = load_config()
+    parser = argparse.ArgumentParser(description="Letterboxd film and review scraper.")
+    parser.add_argument("--config", type=str, default=None, help="Path to custom JSON config file.")
+    parser.add_argument("--db", type=str, default=None, help="Output SQLite database path (default: data/raw/letterboxd.db).")
+    parser.add_argument("--pages", type=int, default=None, help="Max popular pages to scrape.")
+    parser.add_argument("--reviews", type=int, default=None, help="Max reviews per film to collect.")
+    parser.add_argument("--delay", type=float, default=None, help="Request delay in seconds.")
+    parser.add_argument("--slug", type=str, default=None, help="Scrape a specific film by its slug (e.g. 'oppenheimer').")
+
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    if args.db:
+        config["database_path"] = args.db
+    if args.pages is not None:
+        config["max_pages_to_scrape"] = args.pages
+    if args.reviews is not None:
+        config["max_reviews_per_film"] = args.reviews
+    if args.delay is not None:
+        config["request_delay_seconds"] = args.delay
+
     setup_logging(config.get("log_level", "INFO"))
     logging.info("Starting Letterboxd scraper (urllib + BeautifulSoup)")
+    logging.info("Target database: %s", config["database_path"])
 
     connection = init_database(config["database_path"])
 
     try:
-        # Step 1: Get film slugs from popular page
-        film_slugs = scrape_popular_film_slugs(config)
+        if args.slug:
+            film_slugs = [args.slug]
+        else:
+            # Step 1: Get film slugs from popular page
+            film_slugs = scrape_popular_film_slugs(config)
 
         # Step 2: Scrape each film's details + reviews
         for film_index, film_slug in enumerate(film_slugs, 1):
-            logging.info(
-                "Processing film %d/%d: %s",
-                film_index, len(film_slugs), film_slug,
-            )
+            logging.info("Processing film %d/%d: %s", film_index, len(film_slugs), film_slug)
 
             try:
                 film_data = scrape_film_detail(film_slug, config)
-                time.sleep(config["request_delay_seconds"])
+                time.sleep(config.get("request_delay_seconds", DEFAULT_CONFIG["request_delay_seconds"]))
 
                 review_list = scrape_film_reviews(film_slug, config)
                 film_data["review_list"] = review_list
-                time.sleep(config["request_delay_seconds"])
+                time.sleep(config.get("request_delay_seconds", DEFAULT_CONFIG["request_delay_seconds"]))
 
                 save_film(connection, film_data)
 
             except Exception as scrape_error:
-                logging.error(
-                    "Failed to scrape %s: %s", film_slug, scrape_error,
-                )
+                logging.error("Failed to scrape %s: %s", film_slug, scrape_error)
                 continue
 
     finally:
         connection.close()
 
-    logging.info("Scraping complete")
+    logging.info("Scraping complete.")
 
 
 if __name__ == "__main__":

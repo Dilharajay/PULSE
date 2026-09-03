@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Letterboxd Pulse</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glowing-card">
+            <div class="sidebar-header">
+                <h2>PULSE<span class="neon-cyan">_</span></h2>
+                <div class="neon-line"></div>
+            </div>
+            <div class="search-container">
+                <input type="text" id="searchInput" placeholder="Search movies..." autocomplete="off">
+            </div>
+            <ul class="movie-list" id="movieList">
+                <li class="loading">Initializing uplink...</li>
+                <!-- Populated by JS -->
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Welcome / Empty State -->
+            <div id="emptyState" class="empty-state">
+                <div class="neon-pulse-circle"></div>
+                <h2>Letterboxd Pulse</h2>
+                <p class="subtitle">Advanced Cinematic NLP Dashboard</p>
+                
+                <div class="info-cards">
+                    <div class="info-card">
+                        <h3>NLP Sentiment</h3>
+                        <p>Powered by a fine-tuned DistilBERT model. We extract the true sentiment (1 to 5 stars) directly from the text of user reviews, allowing us to compare what users wrote vs what they actually rated.</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Controversy Score</h3>
+                        <p>Calculated as the standard deviation of the predicted sentiment. A high score means the movie is highly polarizing—the audience is completely divided.</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Emotional Signature</h3>
+                        <p>Powered by DistilRoBERTa. We classify every English sentence into 6 core emotions (Joy, Sadness, Anger, Fear, Disgust, Surprise) to map the community's exact emotional response to the film.</p>
+                    </div>
+                </div>
+
+                <p class="action-prompt">Select a movie from the sidebar to establish a data link.</p>
+            </div>
+
+            <!-- Movie Details -->
+            <div id="movieDetails" class="movie-details hidden">
+                <div class="split-layout">
+                    <!-- Left Column -->
+                    <div class="left-column">
+                        <div class="poster-container glowing-card">
+                            <img id="moviePoster" src="" alt="Movie Poster" class="poster-img">
+                            <div class="poster-loader" id="posterLoader"></div>
+                        </div>
+                        <div class="description-card glowing-card">
+                            <h3>Synopsis</h3>
+                            <div class="neon-line" style="margin-bottom: 16px;"></div>
+                            <p id="movieDescription">Loading description...</p>
+                        </div>
+                    </div>
+
+                    <!-- Right Column -->
+                    <div class="right-column">
+                        <div class="header-card glowing-card">
+                            <div class="movie-info">
+                                <h1 id="movieTitle">Movie Title</h1>
+                                <p class="genres" id="movieGenres">Action / Sci-Fi</p>
+                                
+                                <div class="metrics-grid">
+                                    <div class="metric-card soft-card">
+                                        <h3>NLP Sentiment</h3>
+                                        <div class="metric-value neon-cyan" id="metricSentiment">0.0</div>
+                                    </div>
+                                    <div class="metric-card soft-card">
+                                        <h3>User Rating</h3>
+                                        <div class="metric-value" id="metricRating">0.0</div>
+                                    </div>
+                                    <div class="metric-card soft-card">
+                                        <h3>Controversy</h3>
+                                        <div class="metric-value neon-teal" id="metricControversy">0.0</div>
+                                    </div>
+                                </div>
+
+                                <div class="stats-row">
+                                    <span class="pill" id="statReviews">0 Reviews</span>
+                                    <span class="pill" id="statSentences">0 Sentences</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-card glowing-card">
+                            <div class="chart-header">
+                                <h2>Emotional Signature</h2>
+                                <div class="neon-line"></div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="emotionRadar"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -8,10 +8,19 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "emoji>=2.15.0",
+    "fastapi>=0.141.1",
+    "ftfy>=6.3.1",
     "ipykernel>=7.3.0",
+    "ipywidgets>=8.1.9",
     "matplotlib>=3.11.1",
+    "openai>=3.5.0",
     "pandas>=3.0.5",
+    "plotly>=7.0.0",
+    "pyarrow>=25.0.1",
     "seaborn>=0.13.2",
+    "spacy>=3.8.16",
+    "tqdm>=4.70.0",
 ]
 
 [project.scripts]

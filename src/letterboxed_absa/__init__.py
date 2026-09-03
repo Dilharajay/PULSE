@@ -1,2 +1,4 @@
-def main() -> None:
-    print("Hello from letterboxed-absa!")
+from .definitions import defs
+
+def main():
+    print("Welcome to letterboxed_absa!")

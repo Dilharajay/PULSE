@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.12.0",
+    "dagster>=1.13.21",
     "emoji>=2.15.0",
     "fastapi>=0.141.1",
     "ftfy>=6.3.1",
